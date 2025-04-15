@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+//import { faker } from "@faker-js/faker";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./app.css";
 import "./style.css";
@@ -6,7 +7,7 @@ import "./style.css";
 const users = {
   John: "https://randomuser.me/api/portraits/men/1.jpg",
   Sam: "https://randomuser.me/api/portraits/men/2.jpg",
-  Joyse: "https://randomuser.me/api/portraits/women/1.jpg",
+  Joyce: "https://randomuser.me/api/portraits/women/1.jpg",
   Jin: "https://randomuser.me/api/portraits/men/3.jpg",
 };
 
@@ -21,7 +22,7 @@ const sampleMessages = [
     user: "Sam",
     text: "Hi, John! \n I need more information about the Developer Plan.",
     time: "08:56",
-    avatar: "https://www.bootdey.com/img/Content/avatar/avatar3.png",
+    avatar: users["Sam"],
   },
   {
     user: "John",
@@ -30,10 +31,10 @@ const sampleMessages = [
     avatar: users["John"],
   },
   {
-    user: "Joyse",
+    user: "Joyce",
     text: "Well I am not sure. \n I have results to show you.",
     time: "08:59",
-    avatar: users["Joyse"],
+    avatar: users["Joyce"],
   },
   {
     user: "John",
@@ -55,37 +56,98 @@ const sampleMessages = [
   },
 ];
 
+const MESSAGES_PER_PAGE = 30;
+
 const ChatBox = () => {
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true); // For loading animation
+  const [allMessages, setAllMessages] = useState([]);
+  const [displayedMessages, setDisplayedMessages] = useState([]);
+  const [page, setPage] = useState(1);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [currentUser, setCurrentUser] = useState("John");
-  const messagesEndRef = useRef(null);
+
+  const chatBoxRef = useRef(null);
+  const bottomRef = useRef(null);
 
   useEffect(() => {
-    // Simulate API delay
-    setTimeout(() => {
-      const repeatedMessages = Array(1000).fill(sampleMessages).flat();
-      setMessages(repeatedMessages);
-      setLoading(false);
-    }, 2000); // 2 seconds fake delay
+    const saved = localStorage.getItem("chatMessages");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setAllMessages(parsed);
+      setDisplayedMessages(parsed.slice(-MESSAGES_PER_PAGE));
+      setLoadingInitial(false);
+    } else {
+      (async () => {       // Simulate API call
+        const fakeMessages = await fakeApiFetchMessages(); 
+        localStorage.setItem("chatMessages", JSON.stringify(fakeMessages));
+        setAllMessages(fakeMessages);
+        setDisplayedMessages(fakeMessages.slice(-MESSAGES_PER_PAGE));
+        setLoadingInitial(false);
+      })();}
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (page === 1) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [displayedMessages]);
+
+  const handleScroll = () => {
+    const chatBox = chatBoxRef.current;
+    if (!chatBox || loadingMore) return;
+
+    if (chatBox.scrollTop <= 0 && displayedMessages.length < allMessages.length) {
+      const prevScrollHeight = chatBox.scrollHeight;
+      setLoadingMore(true);
+
+      setTimeout(() => {
+        const newPage = page + 1;
+        const start = Math.max(0, allMessages.length - newPage * MESSAGES_PER_PAGE);
+        const end = allMessages.length - (newPage - 1) * MESSAGES_PER_PAGE;
+
+        const newMessages = allMessages.slice(start, end);
+        setDisplayedMessages((prev) => [...newMessages, ...prev]);
+        setPage(newPage);
+        setLoadingMore(false);
+
+        // maintain scroll position
+        setTimeout(() => {
+          const newScrollHeight = chatBox.scrollHeight;
+          chatBox.scrollTop = newScrollHeight - prevScrollHeight;
+        }, 0);
+      }, 2000); // simulate loading time
+    }
+  };
+
+  useEffect(() => {
+    const chatBox = chatBoxRef.current;
+    if (!chatBox) return;
+    chatBox.addEventListener("scroll", handleScroll);
+    return () => chatBox.removeEventListener("scroll", handleScroll);
+  }, [displayedMessages, loadingMore]);
 
   const sendMessage = () => {
-    if (newMessage.trim() !== "") {
-      const newMsg = {
-        user: currentUser,
-        text: newMessage,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        avatar: users[currentUser],
-      };
-      setMessages([...messages, newMsg]);
-      setNewMessage("");
-    }
+    if (!newMessage.trim()) return;
+
+    const newMsg = {
+      user: currentUser,
+      text: newMessage,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      avatar: users[currentUser],
+    };
+
+    const updatedAll = [...allMessages, newMsg];
+    const updatedDisplayed = [...displayedMessages, newMsg];
+
+    setAllMessages(updatedAll);
+    setDisplayedMessages(updatedDisplayed);
+    localStorage.setItem("chatMessages", JSON.stringify(updatedAll));
+    setNewMessage("");
+
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
   };
 
   const formatMessageText = (text) =>
@@ -100,7 +162,7 @@ const ChatBox = () => {
     <div className="chat-container">
       <h5 className="text-left border-bottom pb-2">Project Communications</h5>
 
-      {loading ? (
+      {loadingInitial ? (
         <div className="d-flex justify-content-center align-items-center" style={{ height: "200px" }}>
           <div className="spinner-border text-primary" role="status" />
         </div>
@@ -115,35 +177,41 @@ const ChatBox = () => {
             </button>
           </div>
 
-          <ul className="chat-box chatContainerScroll">
-            {messages.map((msg, index) => (
+          <ul className="chat-box chatContainerScroll" ref={chatBoxRef}>
+            {loadingMore && (
+              <li className="text-center py-2">
+                <div className="spinner-border spinner-border-sm text-primary" role="status" />
+              </li>
+            )}
+
+            {displayedMessages.map((msg, index) => (
               <li key={index} className={msg.user === "John" ? "chat-left" : "chat-right"}>
                 {msg.user === "John" ? (
                   <>
                     <div className="chat-avatar">
-                      <img src={msg.avatar} alt={`${msg.user}'s Avatar`} className="avatar avatar-sm" />
+                      <img src={msg.avatar} alt={msg.user} className="avatar avatar-sm" />
                       <div className="chat-name">{msg.user}</div>
                     </div>
                     <div className="chat-text">{formatMessageText(msg.text)}</div>
                     <div className="chat-hour">
-                      {msg.time} <span className="fa fa-check-circle px-1" aria-hidden="true"></span>
+                      {msg.time} <span className="fa fa-check-circle px-1" />
                     </div>
                   </>
                 ) : (
                   <>
                     <div className="chat-hour">
-                      {msg.time} <span className="fa fa-check-circle px-1" aria-hidden="true"></span>
+                      {msg.time} <span className="fa fa-check-circle px-1" />
                     </div>
                     <div className="chat-text">{formatMessageText(msg.text)}</div>
                     <div className="chat-avatar">
-                      <img src={msg.avatar} alt={`${msg.user}'s Avatar`} className="avatar avatar-sm" />
+                      <img src={msg.avatar} alt={msg.user} className="avatar avatar-sm" />
                       <div className="chat-name">{msg.user}</div>
                     </div>
-                    <div ref={messagesEndRef} />
                   </>
                 )}
               </li>
             ))}
+            <div ref={bottomRef} />
           </ul>
 
           <div className="chat-search-box">
