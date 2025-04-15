@@ -57,7 +57,24 @@ const sampleMessages = [
 ];
 
 const MESSAGES_PER_PAGE = 30;
-
+ 
+const fakeApiFetchMessages = () => {
+  return new Promise((resolve) => { 
+    setTimeout(() => {
+      const messages = Array.from({ length: 10000 }, (_, i) => {
+        const user = sampleMessages[i % sampleMessages.length].user;
+        return {
+          user,
+          text: sampleMessages[i % sampleMessages.length].text,
+          time: sampleMessages[i % sampleMessages.length].time,
+          avatar: users[user],
+        };
+      });
+      resolve(messages);
+    }, 1500);
+  });
+};
+// const fakeApiFetchMessages = () => {
 const ChatBox = () => {
   const [allMessages, setAllMessages] = useState([]);
   const [displayedMessages, setDisplayedMessages] = useState([]);
